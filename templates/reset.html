@@ -1,0 +1,41 @@
+{%extends 'auth.html'%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    {%block title%}
+    <title>Восстановление</title>
+    {%endblock%}
+</head>
+<body>
+    
+    {%block form%}
+    <form class="form_wrapper" method="POST">
+        <p class="form-header">Восстановление</p>
+        {% csrf_token %}
+        <div>
+        {%for field in form %}
+        <div class="input-wrapper">
+            {{field}}
+            {{field.errors}}
+        </div>
+
+        {%endfor%}
+        </div>
+        <button class="submit-btn" type="submit">Восстановить</button>
+        <div class="links">
+            <p>Есть аккаунт? <a href="{% url 'loginView'%}">Войти</a></p>
+            <p>Нет аккаунта? <a href="{% url 'Register'%}">Регистрация</a></p>
+        </div>
+    </form>
+    <script>
+        if ({{success}}){
+            alert('На вашу почту выслано письмо с инструкциями')
+        }
+    </script>
+    {%endblock%}
+
+</body>
+</html>

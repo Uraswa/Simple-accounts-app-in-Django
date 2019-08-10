@@ -1,0 +1,36 @@
+{%extends 'auth.html'%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    {%block title%}
+    <title>Авторизация</title>
+    {%endblock%}
+</head>
+<body>
+    
+    {%block form%}
+    <form class="form_wrapper" method="POST">
+        <p class="form-header">Вход</p>
+        {% csrf_token %}
+        <div>
+        {%for field in form %}
+        <div class="input-wrapper">
+            {{field}}
+
+        </div>
+        {{field.errors}}
+        {%endfor%}
+        </div>
+        <button class="submit-btn" type="submit">Войти</button>
+        <div class="links">
+            <p>Забыли пароль? <a href="{% url 'reset_pass'%}">Восстановить</a></p>
+            <p>Нет аккаунта? <a href="{% url 'Register'%}">Регистрация</a></p>
+        </div>
+    </form>
+    {%endblock%}
+    
+</body>
+</html>
