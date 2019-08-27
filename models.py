@@ -6,87 +6,83 @@ from django.utils.html import escape
 from django.utils.crypto import get_random_string
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
-from PROJECT_DIR.settings import HOSTNAME,PROTOCOL,EMAIL_HOST_USER as admin_email
-
-# Это простое приложение авторизации, которое я использую в своих проектах
-# Для работы нужно определить Имя хоста, протокол http:// или https:// 
-# И указать залогинется в вашей почте в settings
-# И изменить PROJECT_DIR.settings на модуль ваших настроек
+from django.conf import settings
 
 
+#BASE MANAGER 
 
-class UserManager(BaseUserManager):
-    def create_user(self, email,name,sername,password=None):
-        """
-        Creates and saves a User with the given email and password.
-        """
+
+class BaseManager(models.Manager):
+
+    def get_or_none(self, **kwargs):
+        try:
+            return self.get(**kwargs)
+        except self.model.DoesNotExist:
+            return None
+
+
+class UserManager(BaseUserManager, BaseManager):
+    def create_user(self, email, name, password=None):
         if not email:
             raise ValueError('Users must have an email address')
 
+        if not name:
+            raise ValueError('Users must have a name')
+
         activation_key = ''
-        while (True):
+        while True:
             activation_key = get_random_string(length=60)
-            try: 
-                if (not User.objects.get(activate_key = activation_key)):
+            try:
+                if not User.objects.get(activate_key=activation_key):
                     break
             except User.DoesNotExist:
-                break        
+                break
 
         user = self.model(
             email=self.normalize_email(email),
-            name = escape(name),
-            sername = escape(sername),
-            activate_key = activation_key
+            name=escape(name),
+            activate_key=activation_key
         )
 
         user.set_password(password)
         user.save(using=self._db)
 
-        msg = render_to_string('activate.html',{'key':activation_key,'http':PROTOCOL,'hostname':HOSTNAME})
+        msg = render_to_string('email_templates/activate.html', {'key': activation_key, 'http': settings.PROTOCOL, 'hostname': settings.HOSTNAME})
 
         send_mail(
             'Подтверждение регистрации',
             '',
-            admin_email
+            settings.EMAIL_HOST_USER,
             [email],
             html_message=msg
         )
 
         return user
 
-    def create_staffuser(self, email, password,name = '',sername = ''):
-        """
-        Creates and saves a staff user with the given email and password.
-        """
-        
-
+    def create_staffuser(self, email, password, name=''):
         user = self.create_user(
             email,
             name=name,
-            sername=sername,
             password=password,
         )
         user.staff = True
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, password,name = '',sername = ''):
-        """
-        Creates and saves a superuser with the given email and password.
-        """
+    def create_superuser(self, email, password, name=''):
         user = self.create_user(
-            email,
+            email=email,
             name=name,
-            sername=sername,
             password=password,
         )
         user.staff = True
         user.admin = True
+        user.activated = True
+        user.activate_key = ''
         user.save(using=self._db)
-        return user 
 
-    
-          
+        return user
+
 
 class User(AbstractBaseUser):
     email = models.EmailField(
@@ -94,53 +90,43 @@ class User(AbstractBaseUser):
         max_length=255,
         unique=True,
     )
-    
-    name = models.CharField(max_length = 255)
-    sername = models.CharField(max_length = 255)
-    activated = models.BooleanField(default=False)
-    activate_key = models.CharField(max_length = 255,null = True,blank= True)
-    reg_date = models.DateTimeField(auto_now_add=True,null = True, blank = True)
-    active = models.BooleanField(default=True)
-    staff = models.BooleanField(default=False) # a admin user; non super-user
-    admin = models.BooleanField(default=False) # a superuser
-    # notice the absence of a "Password field", that's built in.
 
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = [] # Email & Password are required by default.
+    name = models.CharField(unique=True,max_length=40,verbose_name='user name')
+    activated = models.BooleanField(default=False)
+    activate_key = models.CharField(max_length=255, null=True, blank=True)
+    reg_date = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    active = models.BooleanField(default=True)
+    staff = models.BooleanField(default=False)
+    admin = models.BooleanField(default=False)
+    avatar = models.ImageField(null=True, blank=True, upload_to='user_avatars')
+
+    USERNAME_FIELD = 'name'
+    REQUIRED_FIELDS = []
     objects = UserManager()
 
-    def get_full_name(self):
-        # The user is identified by their email address
-        return self.email
+    def get_avatar(self):
+        return f'{settings.PROTOCOL}{settings.HOSTNAME}{self.avatar.url if self.avatar else None}'
 
-    def get_short_name(self):
-        # The user is identified by their email address
-        return self.email
-
-    def __str__(self):              # __unicode__ on Python 2
-        return self.email
+    def __str__(self):
+        return f'{self.id} {self.email} {self.name}'
 
     def has_perm(self, perm, obj=None):
-        
-        # Simplest possible answer: Yes, always
         return True
 
     def has_module_perms(self, app_label):
-        
-        # Simplest possible answer: Yes, always
         return True
 
     @property
     def is_staff(self):
-        
         return self.staff
 
     @property
     def is_admin(self):
-        
         return self.admin
 
     @property
     def is_active(self):
-        
         return self.active
+
+
+

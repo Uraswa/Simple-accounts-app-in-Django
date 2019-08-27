@@ -1,149 +1,153 @@
-# accounts.forms.py
 from django import forms
-from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from .models import User
-from django.utils.html import escape
 import re
-from django.utils.crypto import get_random_string
 from django.contrib.auth import authenticate
 
 
-def passwordValidator(password):
-    if (password):
+def password_validator(password: str):
 
-        password_len = len(password)
-        if (password_len < 8 or password_len > 32):
-            raise forms.ValidationError('Длина пароля должна быть от 8 до 32 символов включительно')
-            
-        any_caps = re.findall(r'[A-Z]',password)
-        if (not any_caps):
-            raise forms.ValidationError('Пароль должен содержать заглавные символы')
+    if not 8 < len(password) < 32:
+        raise forms.ValidationError('Длина пароля должна быть от 8 до 32 символов включительно')
 
-        any_digits = re.findall(r'\d',password)
-        if (not any_digits):
-            raise forms.ValidationError('Пароль должен содержать числовые символы')
+    elif not re.findall(r'[A-Z]', password):
+        raise forms.ValidationError('Пароль должен содержать заглавные символы')
 
-        some_specialchars = re.findall(r'\W',password)
-        if (some_specialchars):
-            raise forms.ValidationError('Пароль не должен содержать специальные символы')
+    elif not re.findall(r'\d', password):
+        raise forms.ValidationError('Пароль должен содержать числовые символы')
 
-        return password                    
+    elif re.findall(r'\W', password):
+        raise forms.ValidationError('Пароль не должен содержать специальные символы')
+
+    return password
 
 
-    raise forms.ValidationError('Введите пароль')
+def name_validator(name):
+    if name and len(name) < 41:
 
-class RegisterForm(forms.Form):
-    
-    email = forms.EmailField()
-    name  = forms.CharField(min_length=1, max_length= 40)
-    sername = forms.CharField(min_length=1, max_length=40)
-    password = forms.CharField(min_length=8, max_length=31)
+        name_pattern = r'^[A-Za-z0-9][A-Za-z0-9_]+$'
+
+        if re.findall(name_pattern, name):
+
+            if name.endswith('_'):
+                raise forms.ValidationError('Имя не должно заканчиваться на _')
+
+            try:  # своеобразная проверка уникальности
+                User.objects.get(name=name)
+            except User.DoesNotExist:
+                return name
+
+            raise forms.ValidationError('Имя пользователя должно быть уникальным')
+
+        raise forms.ValidationError('Имя должно начинаться с [A-Za-z0-9], содержать символы [A-Za-z0-9_]')
+
+    raise forms.ValidationError('Длина имени пользователя должна быть  0 - 40 символ')
+
+
+def password_field():
+    return forms.CharField(max_length=31, widget=forms.PasswordInput)
+
+
+def find_email(cleaned_data, return_user=False, exception=True):
+    email = cleaned_data.get('email')
+    email_user = User.objects.get_or_none(email=email)
+    if email_user is None:
+        return email_user if return_user else email
+    if exception:
+        raise forms.ValidationError('Пользователь с таким email адресом уже существует')
+    return email_user
+
+
+def check_activated(user):
+    if not user.activated:
+        raise forms.ValidationError('Аккаунт не активирован, пожалуйста, подтвердите email адрес')
+    return user
+
+
+def check_active(user):
+    if not user.is_active:
+        raise forms.ValidationError('Аккаунт заблокирован!')
+    return user
+
+def check_fine_user(user):
+    user = check_active(user)
+    return check_activated(user)
+
+class RegisterForm(forms.ModelForm):
+
+    password = password_field()
+
+    class Meta:
+        model = User
+        fields = ['name', 'email']
 
     def clean_email(self):
-        email = self.cleaned_data.get('email')
-        qs = User.objects.filter(email=email)
-        if qs.exists():
-            raise forms.ValidationError("Аккаунт с таким email уже существует")
-
-        if (not len(email)):
-            raise forms.ValidationError('Введите ваш email')    
-
-        return escape(email)
-
-    def clean_name(self):
-        name = self.cleaned_data.get('name')
-        if (name and len(name) < 41):
-            return escape(name)
-
-        raise forms.ValidationError('Длина имени пользователя должна быть  0 - 40 символ')
-
-    def clean_sername(self):
-        sername = self.cleaned_data.get('sername')
-        if (sername and len(sername) < 41):
-            return escape(sername)
-
-        raise forms.ValidationError('Длина фамилии пользователя должна быть 0 - 40 символ')
+        return find_email(self.cleaned_data)
 
     def clean_password(self):
-        password = self.cleaned_data.get('password')
-        return passwordValidator(password)
-        
+        return password_validator(self.cleaned_data['password'])
+
+    def clean_name(self):
+        return name_validator(self.cleaned_data['name'])
+
 
 class LoginForm(forms.Form):
-    
-    email = forms.EmailField()
-    password = forms.CharField(max_length=32)
-
-    def clean_email(self):
-        email = self.cleaned_data['email']
-
-        
-
-        return email
+    name = forms.CharField(max_length=40)
+    password = password_field()
+    log_user = None
 
     def clean_password(self):
         password = self.cleaned_data['password']
-        email = self.cleaned_data.get('email')
+        name = self.cleaned_data.get('name')
 
-        user = authenticate(username = email,password = password)
+        log_user = authenticate(name=name, password=password)
+        if log_user is not None:
 
-        if (user is not None):
+            log_user = check_activated(log_user)
+            log_user = check_active(log_user)
 
-            if not user.is_active:
-                raise forms.ValidationError('Ваш аккаунт был заблокирован')
-
-            if not user.activated:
-                raise forms.ValidationError('Подтвердите свой email, прежде чем авторизоваться ')  
-
+            self.log_user = log_user
             return password
 
-        raise forms.ValidationError('Неверный логин или пароль')    
-        
-   
+        raise forms.ValidationError('Неверный логин или пароль')
 
 
 class ResetForm(forms.Form):
-    
-    email = forms.CharField()
+
+    email = forms.EmailField()
+    user = None
 
     def clean_email(self):
-        email = self.cleaned_data['email']
-
-        try:
-            user = User.objects.get(email = email)
-        except User.DoesNotExist:
-            raise forms.ValidationError('Пользователя с таким email адрессом не существует') 
-
-        if (user.activated == False):
-            raise forms.ValidationError('Пользователя с таким email адрессом не существует')
-
-        if (user.activate_key):
+        user = find_email(self.cleaned_data, exception=False)
+        user = check_fine_user(user)
+        if user.activate_key:
             raise forms.ValidationError('Email письмо уже было отправлено! Проверьте почту или спам')
 
-        
-        return email
+        self.user = user
+        return user.email
+
 
 class NewPasswordForm(forms.Form):
-    
-    password = forms.CharField(max_length=32)
-    password2 = forms.CharField(max_length=32)
+    password = password_field()
+    password2 = password_field()
+    key = forms.CharField(max_length=1000)
+    user = None
 
     def clean_password(self):
-        password = self.cleaned_data['password']
-
-        return passwordValidator(password)
+        return password_validator(self.cleaned_data['password'])
 
     def clean_password2(self):
         password = self.cleaned_data.get('password')
         password2 = self.cleaned_data['password2']
 
-        if (password == password2):
+        if password == password2:
             return password2
 
-        raise forms.ValidationError('Пароли не совпали')    
+        raise forms.ValidationError('Пароли не совпали')
 
-
-                
-
-
-    
+    def clean_key(self):
+        key = self.cleaned_data['key']
+        if key != '':
+            self.user = User.objects.get_or_none(activate_key=key, activated=True)
+            if self.user is not None:
+                return key
+        raise forms.ValidationError('Неверный ключ')

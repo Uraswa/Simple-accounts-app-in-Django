@@ -8,27 +8,24 @@ from datetime import *
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
-from Vtalk.settings import HOSTNAME,PROTOCOL
+from django.conf import settings
 from .forms import *
 
 
 
 @user_passes_test(lambda user: not user.is_authenticated,login_url = '/')
 def loginView(request):
+    form = LoginForm()
     if request.method == 'POST':
         
         form = LoginForm(request.POST)
         if form.is_valid():
-            user = authenticate(username=form.cleaned_data['email'], password=form.cleaned_data['password'])
-            
-            login(request, user)
+                       
+            login(request, form.log_user)
             next = request.GET.get('next')
             next = next if next else '/'
             return redirect(next)
 
-        return render(request,'login.html',{'form':form})            
-
-    form = LoginForm()
     return render(request,"login.html",{'form':form})
 
     
@@ -40,7 +37,7 @@ def registerView(request):
         
         form = RegisterForm(request.POST)
         if form.is_valid():
-            User.objects.create_user(form.cleaned_data['email'],form.cleaned_data['name'],form.cleaned_data['sername'],form.cleaned_data['password'])
+            User.objects.create_user(form.cleaned_data)
             return HttpResponse('Письмо с подтверждением регистрации отправлено')
             
     return render(request,"register.html",{'form':form})
@@ -48,11 +45,9 @@ def registerView(request):
 @user_passes_test(lambda user: not user.is_authenticated,login_url = '/')
 def activateView(request,key):
     if request.method == 'GET':
-        try:
-            user = User.objects.get(activate_key = key, activated = False)
-        except User.DoesNotExist:
-            user = None
-        if (user):
+        user = User.objects.get_or_none(activate_key = key, activated = False)
+        
+        if user:
             
             month = user.reg_date.month
             day = user.reg_date.day
@@ -81,49 +76,43 @@ def logoutView(request):
 @user_passes_test(lambda user: not user.is_authenticated,login_url = '/')
 def resetView(request):
 
+    form = ResetForm()
     if request.method == 'POST':
         form = ResetForm(request.POST)
-        valid = form.is_valid()
-        if (valid):
+        
+        if form.is_valid():
             activation_key = ''
-            while (True):
+            while True:
                 activation_key = get_random_string(length=60)
-                try: 
-                    if (not User.objects.get(activate_key = activation_key,activated = True)):
-                        break
-                except User.DoesNotExist:
+                
+                if not User.objects.get_or_none(activate_key = activation_key,activated = True):
                     break
 
-            user = User.objects.get(email = form.cleaned_data['email'])
+            user = form.user
             user.activate_key = activation_key
             user.save()
-            msg = render_to_string('reset_pass_email.html',{'key':activation_key,'http':PROTOCOL,'hostname':HOSTNAME})
+            msg = render_to_string('reset_pass_email.html',{'key':activation_key,'http':settings.PROTOCOL,'hostname':settings.HOSTNAME})
 
             send_mail(
-                'Смена пароля Vtalk',
+                'Смена пароля',
                 '',
-                'rockavova@gmail.com',
+                settings.EMAIL_HOST_USER,
                 [form.cleaned_data['email']],
                 html_message=msg
             )
 
-        return render(request,"reset.html",{'form':form})
-
-    form = ResetForm()
-
     return render(request,"reset.html",{'form':form})
-
-
 
 
 @user_passes_test(lambda user: not user.is_authenticated,login_url = '/')
 def newpasswordView(request,key):
     
-    try:
-        user = User.objects.get(activated = True,activate_key = key)
-    except User.DoesNotExist:
+    
+    user = User.objects.get_or_none(activated = True,activate_key = key)
+    if not user:
         return redirect('/')
 
+    form = NewPasswordForm()    
     if request.method == 'POST':
         form = NewPasswordForm(request.POST)
         
@@ -134,7 +123,6 @@ def newpasswordView(request,key):
             login(request,user)
             return HttpResponse('Вы успешно сменили пароль')
 
-        return render(request,'newpassword.html',{'form':form})    
+    return render(request,'newpassword.html',{'form':form})
 
-    form = NewPasswordForm()
-    return render(request,'newpassword.html',{'form':form})    
+    
