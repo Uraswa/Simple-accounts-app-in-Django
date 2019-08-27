@@ -68,9 +68,11 @@ def check_active(user):
         raise forms.ValidationError('Аккаунт заблокирован!')
     return user
 
+
 def check_fine_user(user):
     user = check_active(user)
     return check_activated(user)
+
 
 class RegisterForm(forms.ModelForm):
 
@@ -129,7 +131,6 @@ class ResetForm(forms.Form):
 class NewPasswordForm(forms.Form):
     password = password_field()
     password2 = password_field()
-    key = forms.CharField(max_length=1000)
     user = None
 
     def clean_password(self):
@@ -143,11 +144,3 @@ class NewPasswordForm(forms.Form):
             return password2
 
         raise forms.ValidationError('Пароли не совпали')
-
-    def clean_key(self):
-        key = self.cleaned_data['key']
-        if key != '':
-            self.user = User.objects.get_or_none(activate_key=key, activated=True)
-            if self.user is not None:
-                return key
-        raise forms.ValidationError('Неверный ключ')
